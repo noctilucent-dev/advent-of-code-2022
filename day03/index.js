@@ -16,38 +16,32 @@ function getPriority(letter) {
 
 function findMisplacedItem(line) {
     const arr = line.split("");
-    let left = arr.slice(undefined, arr.length / 2);
+    let left = arr.slice(0, arr.length / 2);
     let right = new Set(arr.slice(arr.length / 2));
-    const misplaced = left.filter(l => right.has(l))[0];
-    return misplaced;
+    return left.filter(l => right.has(l))[0];
 }
 
 function part1(lines) {
-    let sum = 0;
-    for(let i=0; i<lines.length; i++) {
-        let l = findMisplacedItem(lines[i]);
-        console.log(`Misplaced: ${l}, Priority: ${getPriority(l)}`);
-
-        sum += getPriority(l);
-    }
-    return sum;
+    return lines.reduce(
+        (p, l) => p + getPriority(findMisplacedItem(l)),
+        0);
 }
 
 function findBadge(lines) {
-    const allItems = new Set(lines[0]);
+    const possibleValues = new Set(lines[0]);
     for (let i=1; i<lines.length; i++) {
-        Array.from(allItems).forEach(c => {
-            if (lines[i].indexOf(c) < 0) allItems.delete(c);
-        });
+        Array.from(possibleValues)
+            .filter(v => lines[i].indexOf(v) < 0)
+            .forEach(v => possibleValues.delete(v));
     }
-    return Array.from(allItems)[0];
+
+    return Array.from(possibleValues)[0];
 }
 
 function part2(lines) {
     let sum = 0;
-    for(let i=0; i<=lines.length; i += 3) {
-        const badge = findBadge([lines[i], lines[i+1], lines[i+2]]);
-        console.log(`Badge: ${badge}, Priority: ${getPriority(badge)}`);
+    for(let i=0; i<lines.length; i += 3) {
+        const badge = findBadge(lines.slice(i, i+3));
         sum +=  getPriority(badge);
     }
     return sum;
