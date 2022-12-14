@@ -15,6 +15,12 @@ function deepClone(arr) {
     return [...arr.map(l => [...l])];
 }
 
+function constrain(num, min, max) {
+    if (num < min) return min;
+    if (num > max) return max;
+    return num;
+}
+
 function recursiveCompare(obj, reference){
     if(obj === reference) return true;
     if(obj.constructor !== reference.constructor) return false;
@@ -44,6 +50,7 @@ function recursiveCompare(obj, reference){
 }
 
 module.exports = {
+    constrain,
     raw,
     DEBUG,
     log,
