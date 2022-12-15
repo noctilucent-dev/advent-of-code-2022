@@ -1,4 +1,4 @@
-let { constrain, DEBUG, log, raw } = require("../util");
+let { DEBUG, log, raw } = require("../util");
 
 if (DEBUG) {
     raw = `Sensor at x=2, y=18: closest beacon is at x=-2, y=15
@@ -23,33 +23,33 @@ function distance([ax, ay], [bx, by]) {
 
 function parse(raw) {
     return raw.split("\n").map(l => {
-        const [_, sx, sy, bx, by] = l.match(/Sensor at x=(-?\d+), y=(-?\d+): closest beacon is at x=(-?\d+), y=(-?\d+)/);
+        let [sx, sy, bx, by] = l
+            .match(/Sensor at x=(-?\d+), y=(-?\d+): closest beacon is at x=(-?\d+), y=(-?\d+)/)
+            .slice(1)
+            .map(Number);
+        
         return {
-            sx: Number(sx),
-            sy: Number(sy),
-            bx: Number(bx),
-            by: Number(by),
-            distance: distance([sx, sy], [bx, by])
+            sx,
+            sy,
+            bx,
+            by,
+            radius: distance([sx, sy], [bx, by])
         };
     })
 }
 
-function updateLimit(min, max, ...vals) {
-    vals.forEach(v => {
-        min = Math.min(min, v);
-        max = Math.max(max, v);
-    });
-
-    return [min, max];
+function getMinMax(vals) {
+    return vals.reduce(
+        ([pMin, pMax], c) => [Math.min(pMin, c), Math.max(pMax, c)],
+        [Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER]
+    );
 }
 
 function getLimits(sensors) {
-    let minX = Number.MAX_VALUE, minY = Number.MAX_VALUE;
-    let maxX = 0, maxY = 0;
-    sensors.forEach(s => {
-        [minX, maxX] = updateLimit(minX, maxX, s.sx, s.bx, s.sx - s.distance, s.sx + s.distance);
-        [minY, maxY] = updateLimit(minY, maxY, s.sy, s.by, s.sy + s.distance, s.sy - s.distance);
-    });
+    // Consider all coordinates 'in-range' of any sensor
+    let [minX, maxX] = getMinMax(sensors.flatMap(s => [s.sx - s.radius, s.sx + s.radius]));
+    let [minY, maxY] = getMinMax(sensors.flatMap(s => [s.sy - s.radius, s.sy + s.radius]));
+
     return {
         minX,
         minY,
@@ -96,7 +96,7 @@ function part1(sensors) {
     let count = 0;
 
     for(let x=minX; x<=maxX; x++) {
-        const inRange = sensors.some(s => distance([x, y], [s.sx, s.sy]) <= s.distance);
+        const inRange = sensors.some(s => distance([x, y], [s.sx, s.sy]) <= s.radius);
         const isBeacon = sensors.some(s => s.bx === x && s.by === y);
         if (inRange && !isBeacon) count++;
     }
@@ -115,10 +115,10 @@ function part2(sensors) {
     
     for (let y=minY; y<=maxY; y++) {
         for(let x=minX; x<=maxX; x++) {
-            const inRange = sensors.find(s => distance([x, y], [s.sx, s.sy]) <= s.distance);
+            const inRange = sensors.find(s => distance([x, y], [s.sx, s.sy]) <= s.radius);
             if (inRange) {
                 // Skip to the right-edge of the sensor range on this line
-                x = inRange.sx + inRange.distance - Math.abs(inRange.sy - y);
+                x = inRange.sx + inRange.radius - Math.abs(inRange.sy - y);
                 continue;
             } else {
                 return (x * 4000000) + y;
