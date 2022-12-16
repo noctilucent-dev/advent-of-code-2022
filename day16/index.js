@@ -108,23 +108,88 @@ function p1search(current, remaining, flowRate, minutesRemaining, pressureReliev
     for (let i=0; i<remaining.length; i++) {
         const next = remaining[i];
         const distanceToNext = distances[current][next.valve];
-        const result = p1search(
+        let result;
+        if (distanceToNext + 1 >= minutesRemaining) {
+            result = pressureRelieved + (flowRate * minutesRemaining);
+        } else {
+        result = p1search(
             next.valve,
             remaining.filter((v, vi) => vi !== i),
             flowRate + next.flowRate,
             minutesRemaining - distanceToNext - 1,
             pressureRelieved + (flowRate * (distanceToNext + 1)),
             distances);
+        }
         if (result > best) best = result;
     }
     return best;
 }
 
 function part1(valves) {
-    const best = {};
     const distances = getDistances(valves);
     const remaining = valves.filter(v => v.flowRate > 0);
     return p1search("AA", remaining, 0, 30, 0, distances);
+}
+
+function p2search(mLoc, mRate, mTime, eLoc, eRate, eTime, remainingValves, flowRate, minutesRemaining, pressureRelieved, distances) {
+    while(minutesRemaining > 0) {
+        if (mTime === 0) {
+            flowRate += mRate;
+            if (remainingValves.length > 0) {
+                let best = pressureRelieved;
+                for (let i=0; i<remainingValves.length; i++) {
+                    const next = remainingValves[i];
+                    const result = p2search(
+                        next.valve,
+                        next.flowRate,
+                        distances[mLoc][next.valve] + 1,
+                        eLoc, eRate, eTime,
+                        remainingValves.filter((_, vi) => vi !== i),
+                        flowRate,
+                        minutesRemaining,
+                        pressureRelieved,
+                        distances
+                    );
+                    if (result > best) best = result;
+                }
+                return best;
+            }
+        } else if (eTime === 0) {
+            flowRate += eRate;
+            if (remainingValves.length > 0) {
+                let best = pressureRelieved;
+                for (let i=0; i<remainingValves.length; i++) {
+                    const next = remainingValves[i];
+                    const result = p2search(
+                        mLoc, mRate, mTime,
+                        next.valve,
+                        next.flowRate,
+                        distances[eLoc][next.valve] + 1,
+                        remainingValves.filter((_, vi) => vi !== i),
+                        flowRate,
+                        minutesRemaining,
+                        pressureRelieved,
+                        distances
+                    );
+                    if (result > best) best = result;
+                }
+                return best;
+            }
+        }
+
+        minutesRemaining--;
+        mTime--;
+        eTime--;
+        pressureRelieved += flowRate;
+    }
+
+    return pressureRelieved;
+}
+
+function part2(valves) {
+    const distances = getDistances(valves);
+    const remaining = valves.filter(v => v.flowRate > 0);
+    return p2search("AA", 0, 0, "AA", 0, 0, remaining, 0, 26, 0, distances);
 }
 
 const valves = parse(raw);
@@ -133,5 +198,5 @@ log(valves);
 const p1 = part1(valves);
 console.log(`Part1: ${p1}`);
 
-// const p2 = part2(sensors);
-// console.log(`Part2: ${p2}`);
+const p2 = part2(valves);
+console.log(`Part2: ${p2}`);
