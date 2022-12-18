@@ -1,3 +1,4 @@
+const { Console } = require("console");
 let { DEBUG, deepClone, log, raw } = require("../util");
 
 if (DEBUG) {
@@ -125,7 +126,14 @@ function canMoveRight(shape, row, col, chamber) {
     return true;
 }
 
+let minRow = 0;
+
 function canMoveDown(shape, row, col, chamber) {
+    if (chamber.length - row > minRow) {
+        minRow = chamber.length - row;
+        console.log(`Max depth: ${minRow}, height: ${chamber.length}`);
+    }
+    if (row === 0) throw new Error("Hit bottom");
     const shiftLeft = getShiftLeft(shape, col);
 
     for (let y=0; y<shape.height; y++) {
@@ -184,6 +192,7 @@ function part1() {
     const shapes = shapeIterator();
     let chamber = emptyChamber();
     let topRow = 0;
+    let maxDepth = 0;
 
     let shapeCount = 0;
     for (let i=0; i<2022; i++) {
@@ -208,6 +217,7 @@ function part1() {
             } else {
                 setShape(shape, row, col, chamber);
                 topRow = Math.max(topRow, row + shape.height - 1);
+                if (row < topRow && topRow - row > maxDepth) maxDepth = topRow - row;
                 if (DEBUG && topRow !== check[i]) {
                     log("===============");
                     log(printChamber(chamber));
@@ -218,53 +228,30 @@ function part1() {
         }
     }
 
+    console.log(`Max depth: ${maxDepth}`);
+
+    log(printChamber(chamber.slice(-10)));
+
+
     return topRow;
 }
 
 const cache = {};
 
-function memoize(f, ...args) {
+function memoize(f, args, meta) {
     const s = JSON.stringify(args);
     if (cache[s]) {
+        // log(`Cached: ${s}`);
         return cache[s];
     }
+    // log(`Not cached: ${s}`);
     const r = f(...args);
-    cache[s] = r;
+    cache[s] = {
+        cached: true,
+        ...meta,
+        ...r
+    };
     return r;
-}
-
-const deltaCache = {};
-
-function getDelta(shape, col, chamber) {
-    const key = JSON.stringify([
-        shape.index,
-        col,
-        chamber
-    ]);
-    if (deltaCache[key]) return deltaCache[key];
-    const result = [
-        canMoveLeft2(shape, col, chamber),
-        canMoveRight2(shape, col, chamber),
-        canMoveDown2(shape, col, chamber)
-    ];
-    deltaCache[key] = result;
-    return result;
-}
-
-function canMoveLeft2(shape, col, chamber) {
-    if (col === 0) return false;
-    const shiftLeft = getShiftLeft(shape, col) + 1;
-
-    for(let y=0; y<shape.height; y++) {
-        const chamberRow = chamber[y+1];
-        if (!chamberRow) continue;
-        
-        let shapeRow = shape.rows[shape.height-y-1];
-        shapeRow = shapeRow << shiftLeft;
-        if ((shapeRow & chamberRow) > 0) return false;
-    }
-
-    return true;
 }
 
 function canMoveRight2(shape, col, chamber) {
@@ -310,34 +297,14 @@ function fitShape(shapeIndex, jetIndex, chamber, topRow) {
         const jet = raw[jetIndex];
         jetIndex = (jetIndex + 1) % raw.length;
 
-        // if (jet === '>' && canMoveRight(shape, row, col, chamber)) {
-        //     col++;
-        // } else if (jet === '<' && canMoveLeft(shape, row, col, chamber)) {
-        //     col--;
-        // }
-        // if (canMoveDown(shape, row, col, chamber)) {
-        //     row--;
-        // } else {
-        //     setShape(shape, row, col, chamber);
-        //     topRow = Math.max(topRow, row + shape.height - 1);
-        //     break;
-        // }
-
-        const [l, r, d] = getDelta(shape, col, chamber.slice(row-1, row+4));
-        if (l !== canMoveLeft(shape, row, col, chamber)) {
-            throw new Error();
+        if (jet === '>' && canMoveRight(shape, row, col, chamber)) {
+            col++;
+        } else if (jet === '<' && canMoveLeft(shape, row, col, chamber)) {
+            col--;
         }
-        if (r !== canMoveRight(shape, row, col, chamber)) {
-            throw new Error();
-        }
-        if (d !== canMoveDown(shape, row, col, chamber)) {
-            throw new Error();
-        }
-
-        if (jet === '<' && l) col--;
-        if (jet === '>' && r) col++;
-        if (d) row--;
-        else {
+        if (canMoveDown(shape, row, col, chamber)) {
+            row--;
+        } else {
             setShape(shape, row, col, chamber);
             topRow = Math.max(topRow, row + shape.height - 1);
             break;
@@ -352,37 +319,59 @@ function fitShape(shapeIndex, jetIndex, chamber, topRow) {
 }
 
 function part2() {
+    const MAX_HEIGHT = 100;
+    const LIMIT = BigInt("1000000000000");
+
     let chamber = emptyChamber();
     let topRow = 0;
-    let offset = 0;
+    let offset = BigInt(0);
 
-    let shapeCount = 0;
+    let shapeCount = BigInt(0);
     let shapeIndex = 0;
     let jetIndex = 0;
     while(true) {
-        const r = memoize(fitShape, shapeIndex, jetIndex, chamber, topRow);
+        const r = memoize(fitShape, [shapeIndex, jetIndex, [...chamber], topRow], { shapeCount, actualTop: offset + BigInt(topRow) });
+
+        if (r.cached) {
+            const loopLength = shapeCount - r.shapeCount;
+            const loopGrow = (BigInt(topRow) + offset) - r.actualTop;
+            console.log(`Count ${shapeCount} repeats ${r.shapeCount}`);
+            const initialCount = r.shapeCount;
+            const loops = (LIMIT - r.shapeCount) / loopLength;
+            const remainder = (LIMIT - r.shapeCount) % loopLength;
+            const last = cache[Object.getOwnPropertyNames(cache).find(n => cache[n].shapeCount === r.shapeCount + remainder)];
+            const remainderAdd = last.actualTop - r.actualTop;
+            return r.actualTop + (loops * loopGrow) + remainderAdd;
+        }
+
         jetIndex = r.jetIndex;
         topRow = r.topRow;
-        shapeCount++;
+        chamber = r.chamber;
+        shapeCount = shapeCount + BigInt(1);
         shapeIndex = (shapeIndex + 1) % allShapes.length;
 
-        if (shapeCount < 11) log(printChamber(chamber) + "\n");
-
-        let bottom;
-        for (bottom=topRow, coverage = 0b0000000; bottom>0; bottom--) {
-            coverage |= chamber[bottom];
-            if (coverage === 0b1111111) break;
+        if (topRow < chamber.length - 1) chamber = chamber.slice(0, topRow+1);
+        if (topRow >= chamber.length) {
+            throw new Error(`Overtopped`);
         }
-        if (bottom > 0) {
-            log(`Trimming at line ${bottom}, shape count: ${shapeCount}, cache size: ${Object.getOwnPropertyNames(cache).length}`);
-            // log(printChamber(chamber) + "\n");
-            chamber = chamber.slice(bottom);
-            offset += bottom;
-            // log(printChamber(chamber) + "\n");
+
+        // if (topRow + offset !== check[shapeCount-1]) {
+        //     throw new Error(`Mismatch for shape ${shapeCount - 1}`);
+        // }
+
+        //if (shapeCount < 11) log(printChamber(chamber) + "\n");
+
+        if (topRow > MAX_HEIGHT) {
+            const toRemove = topRow - MAX_HEIGHT;
+            offset = offset + BigInt(toRemove);
+            chamber = chamber.slice(toRemove);
+            topRow -= toRemove;
         }
         
-        if (shapeCount === 2022) break;
+        if (shapeCount === LIMIT) break;
     }
+
+    log(printChamber(chamber.slice(-10)));
 
     return topRow + offset;
 }
