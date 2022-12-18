@@ -6,6 +6,7 @@ if (DEBUG) {
 
 // ####
 const shape1 = {
+    index: 0,
     width: 4,
     height: 1,
     rows: [0b1111]
@@ -15,6 +16,7 @@ const shape1 = {
 // ###
 //  #
 const shape2 = {
+    index: 1,
     width: 3,
     height: 3,
     rows: [
@@ -27,6 +29,7 @@ const shape2 = {
 //   #
 // ###
 const shape3 = {
+    index: 2,
     width: 3,
     height: 3,
     rows: [
@@ -41,6 +44,7 @@ const shape3 = {
 // #
 // #
 const shape4 = {
+    index: 3,
     width: 1,
     height: 4,
     rows: [
@@ -54,6 +58,7 @@ const shape4 = {
 // ##
 // ##
 const shape5 = {
+    index: 4,
     width: 2,
     height: 2,
     rows: [
@@ -62,18 +67,18 @@ const shape5 = {
     ]
 };
 
-function* jetIterator() {
-    for (let i=0; true; i = (i+1) % raw.length) {
+const allShapes = [
+    shape1, shape2, shape3, shape4, shape5
+];
+
+function* jetIterator(offset = 0) {
+    for (let i=offset; true; i = (i+1) % raw.length) {
         yield raw[i];
     }
 }
 
-function* shapeIterator() {
-    const allShapes = [
-        shape1, shape2, shape3, shape4, shape5
-    ];
-
-    for (let i=0; true; i = (i + 1) % allShapes.length) {
+function* shapeIterator(offset = 0) {
+    for (let i=offset; true; i = (i + 1) % allShapes.length) {
         yield allShapes[i];
     }
 }
@@ -164,10 +169,10 @@ function printChamber(chamber, shape, row, col) {
                 if (shapeRow[x]) lines[row+y][x] = '@';
             }
         }
-        return lines.reverse().map(l => l.join("")).join("\n");
+        return [...lines].reverse().map(l => l.join("")).join("\n");
     }
 
-    return chamber
+    return [...chamber]
         .reverse()
         .map(r => (`0000000${r.toString(2)}`.slice(-7)).split("").map(Number).map(c => c ? '#' : '.').join("")).join("\n");
 }
@@ -216,8 +221,174 @@ function part1() {
     return topRow;
 }
 
+const cache = {};
+
+function memoize(f, ...args) {
+    const s = JSON.stringify(args);
+    if (cache[s]) {
+        return cache[s];
+    }
+    const r = f(...args);
+    cache[s] = r;
+    return r;
+}
+
+const deltaCache = {};
+
+function getDelta(shape, col, chamber) {
+    const key = JSON.stringify([
+        shape.index,
+        col,
+        chamber
+    ]);
+    if (deltaCache[key]) return deltaCache[key];
+    const result = [
+        canMoveLeft2(shape, col, chamber),
+        canMoveRight2(shape, col, chamber),
+        canMoveDown2(shape, col, chamber)
+    ];
+    deltaCache[key] = result;
+    return result;
+}
+
+function canMoveLeft2(shape, col, chamber) {
+    if (col === 0) return false;
+    const shiftLeft = getShiftLeft(shape, col) + 1;
+
+    for(let y=0; y<shape.height; y++) {
+        const chamberRow = chamber[y+1];
+        if (!chamberRow) continue;
+        
+        let shapeRow = shape.rows[shape.height-y-1];
+        shapeRow = shapeRow << shiftLeft;
+        if ((shapeRow & chamberRow) > 0) return false;
+    }
+
+    return true;
+}
+
+function canMoveRight2(shape, col, chamber) {
+    // check for right-edge
+    if (col + shape.width >= 7) return false;
+
+    const shiftLeft = getShiftLeft(shape, col) - 1;
+
+    for(let y=0; y<shape.height; y++) {
+        const chamberRow = chamber[y+1];
+        if (!chamberRow) continue;
+        
+        let shapeRow = shape.rows[shape.height-y-1];
+        shapeRow = shapeRow << shiftLeft;
+        if ((shapeRow & chamberRow) > 0) return false;
+    }
+
+    return true;
+}
+
+function canMoveDown2(shape, col, chamber) {
+    const shiftLeft = getShiftLeft(shape, col);
+
+    for (let y=0; y<shape.height; y++) {
+        const chamberRow = chamber[y];
+        if (!chamberRow) continue;
+        
+        let shapeRow = shape.rows[shape.rows.length-y-1];
+        shapeRow = shapeRow << shiftLeft;
+        if ((chamberRow & shapeRow) > 0) return false;
+    }
+
+    return true;
+}
+
+
+function fitShape(shapeIndex, jetIndex, chamber, topRow) {
+    const shape = allShapes[shapeIndex];
+    let row = topRow + 4;
+    let col = 2;
+
+    while(true) {
+        const jet = raw[jetIndex];
+        jetIndex = (jetIndex + 1) % raw.length;
+
+        // if (jet === '>' && canMoveRight(shape, row, col, chamber)) {
+        //     col++;
+        // } else if (jet === '<' && canMoveLeft(shape, row, col, chamber)) {
+        //     col--;
+        // }
+        // if (canMoveDown(shape, row, col, chamber)) {
+        //     row--;
+        // } else {
+        //     setShape(shape, row, col, chamber);
+        //     topRow = Math.max(topRow, row + shape.height - 1);
+        //     break;
+        // }
+
+        const [l, r, d] = getDelta(shape, col, chamber.slice(row-1, row+4));
+        if (l !== canMoveLeft(shape, row, col, chamber)) {
+            throw new Error();
+        }
+        if (r !== canMoveRight(shape, row, col, chamber)) {
+            throw new Error();
+        }
+        if (d !== canMoveDown(shape, row, col, chamber)) {
+            throw new Error();
+        }
+
+        if (jet === '<' && l) col--;
+        if (jet === '>' && r) col++;
+        if (d) row--;
+        else {
+            setShape(shape, row, col, chamber);
+            topRow = Math.max(topRow, row + shape.height - 1);
+            break;
+        }
+    }
+
+    return {
+        chamber,
+        jetIndex,
+        topRow
+    };
+}
+
+function part2() {
+    let chamber = emptyChamber();
+    let topRow = 0;
+    let offset = 0;
+
+    let shapeCount = 0;
+    let shapeIndex = 0;
+    let jetIndex = 0;
+    while(true) {
+        const r = memoize(fitShape, shapeIndex, jetIndex, chamber, topRow);
+        jetIndex = r.jetIndex;
+        topRow = r.topRow;
+        shapeCount++;
+        shapeIndex = (shapeIndex + 1) % allShapes.length;
+
+        if (shapeCount < 11) log(printChamber(chamber) + "\n");
+
+        let bottom;
+        for (bottom=topRow, coverage = 0b0000000; bottom>0; bottom--) {
+            coverage |= chamber[bottom];
+            if (coverage === 0b1111111) break;
+        }
+        if (bottom > 0) {
+            log(`Trimming at line ${bottom}, shape count: ${shapeCount}, cache size: ${Object.getOwnPropertyNames(cache).length}`);
+            // log(printChamber(chamber) + "\n");
+            chamber = chamber.slice(bottom);
+            offset += bottom;
+            // log(printChamber(chamber) + "\n");
+        }
+        
+        if (shapeCount === 2022) break;
+    }
+
+    return topRow + offset;
+}
+
 const p1 = part1();
 console.log(`Part1: ${p1}`);
 
-// const p2 = part2(valves);
-// console.log(`Part2: ${p2}`);
+const p2 = part2();
+console.log(`Part2: ${p2}`);
